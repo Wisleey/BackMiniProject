@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  REGISTRO
+  AUTORIZACAO
+  ADMINISTRACAO
+}
+
+enum StatusPagamento {
+  PENDENTE
+  AUTORIZADO
+  REJEITADO
+}
+
+model Usuario {
+  id                  Int         @id @default(autoincrement())
+  nome                String      @db.VarChar(150)
+  login               String      @unique @db.VarChar(100)
+  senhaHash           String      @db.VarChar(255)
+  role                Role
+  pagamentosSolicitados Pagamento[] @relation("PagamentosSolicitados")
+  pagamentosAutorizados Pagamento[] @relation("PagamentosAutorizados")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@map("usuarios")
+}
+
+model Pagamento {
+  id                Int             @id @default(autoincrement())
+  cnpjFavorecido    String          @db.VarChar(14)
+  razaoSocial       String          @db.VarChar(200)
+  valor             Decimal         @db.Decimal(15, 2)
+  descricaoServico  String          @db.VarChar(500)
+  dataRegistro      DateTime        @default(now())
+  status            StatusPagamento @default(PENDENTE)
+  solicitanteId     Int
+  autorizadorId     Int?
+  dataDecisao       DateTime?
+  motivoRejeicao    String?         @db.VarChar(500)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  solicitante       Usuario         @relation("PagamentosSolicitados", fields: [solicitanteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  autorizador       Usuario?        @relation("PagamentosAutorizados", fields: [autorizadorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([status])
+  @@index([solicitanteId])
+  @@index([autorizadorId])
+  @@index([dataRegistro])
+  @@map("pagamentos")
+}
