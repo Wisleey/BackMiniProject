@@ -23,7 +23,7 @@ paymentRoutes.post(
 
 paymentRoutes.get(
   "/my",
-  autorizarPerfis("REGISTRO", "AUTORIZACAO", "ADMINISTRACAO"),
+  autorizarPerfis("REGISTRO", "ADMINISTRACAO"),
   (req, res, next) => paymentController.listarMeus(req, res, next)
 )
 
@@ -50,7 +50,7 @@ paymentRoutes.patch(
 
 paymentRoutes.get(
   "/history",
-  autorizarPerfis("REGISTRO", "AUTORIZACAO", "ADMINISTRACAO"),
+  autorizarPerfis("ADMINISTRACAO"),
   validar(schemaHistoricoPagamentos, "query"),
   (req, res, next) => paymentController.historico(req, res, next)
 )
