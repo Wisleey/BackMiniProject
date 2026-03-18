@@ -2,6 +2,7 @@ const { Router } = require("express")
 const { authRoutes } = require("./auth.routes")
 const { userRoutes } = require("./user.routes")
 const { paymentRoutes } = require("./payment.routes")
+const { notificationRoutes } = require("./notification.routes")
 
 const router = Router()
 
@@ -14,6 +15,7 @@ router.get("/health", (_req, res) => {
 router.use("/auth", authRoutes)
 router.use("/users", userRoutes)
 router.use("/payments", paymentRoutes)
+router.use("/notifications", notificationRoutes)
 
 module.exports = {
   router

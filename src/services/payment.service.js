@@ -1,5 +1,7 @@
-const { prisma } = require("../config/prisma");
-const { ErroAplicacao } = require("../utils/app-error");
+const { prisma } = require("../config/prisma")
+const { notificationService } = require("./notification.service")
+const { notificationStreamService } = require("./notification-stream.service")
+const { ErroAplicacao } = require("../utils/app-error")
 
 const includePagamento = {
   solicitante: {
@@ -7,26 +9,31 @@ const includePagamento = {
       id: true,
       nome: true,
       login: true,
-      role: true,
-    },
+      role: true
+    }
   },
   autorizador: {
     select: {
       id: true,
       nome: true,
       login: true,
-      role: true,
-    },
-  },
-};
+      role: true
+    }
+  }
+}
 
 function ajustarInicioDoDia(data) {
-  return new Date(`${data}T00:00:00.000Z`);
+  const dataNormalizada = new Date(data)
+  dataNormalizada.setUTCHours(0, 0, 0, 0)
+  return dataNormalizada
 }
 
 function ajustarFimDoDia(data) {
-  return new Date(`${data}T23:59:59.999Z`);
+  const dataNormalizada = new Date(data)
+  dataNormalizada.setUTCHours(23, 59, 59, 999)
+  return dataNormalizada
 }
+
 class PaymentService {
   async criar(dados, usuarioLogado) {
     return prisma.pagamento.create({
@@ -35,50 +42,50 @@ class PaymentService {
         razaoSocial: dados.razaoSocial,
         valor: dados.valor,
         descricaoServico: dados.descricaoServico,
-        solicitanteId: usuarioLogado.id,
+        solicitanteId: usuarioLogado.id
       },
-      include: includePagamento,
-    });
+      include: includePagamento
+    })
   }
 
   async listarMeusPagamentos(usuarioLogado) {
     return prisma.pagamento.findMany({
       where: {
-        solicitanteId: usuarioLogado.id,
+        solicitanteId: usuarioLogado.id
       },
       include: includePagamento,
       orderBy: {
-        dataRegistro: "desc",
-      },
-    });
+        dataRegistro: "desc"
+      }
+    })
   }
 
   async listarPendentes() {
     return prisma.pagamento.findMany({
       where: {
-        status: "PENDENTE",
+        status: "PENDENTE"
       },
       include: includePagamento,
       orderBy: {
-        dataRegistro: "asc",
-      },
-    });
+        dataRegistro: "asc"
+      }
+    })
   }
 
   async autorizar(idPagamento, usuarioLogado) {
     const pagamento = await prisma.pagamento.findUnique({
-      where: { id: idPagamento },
-    });
+      where: { id: idPagamento }
+    })
 
     if (!pagamento) {
-      throw new ErroAplicacao("Pagamento nao encontrado.", 404);
+      throw new ErroAplicacao("Pagamento nao encontrado.", 404)
     }
 
     if (pagamento.status !== "PENDENTE") {
       throw new ErroAplicacao(
         "Somente pagamentos pendentes podem ser autorizados.",
-        409,
-      );
+        409
+      )
     }
 
     return prisma.pagamento.update({
@@ -87,81 +94,102 @@ class PaymentService {
         status: "AUTORIZADO",
         autorizadorId: usuarioLogado.id,
         dataDecisao: new Date(),
-        motivoRejeicao: null,
+        motivoRejeicao: null
       },
-      include: includePagamento,
-    });
+      include: includePagamento
+    })
   }
 
   async rejeitar(idPagamento, dados, usuarioLogado) {
-    const pagamento = await prisma.pagamento.findUnique({
-      where: { id: idPagamento },
-    });
+    const { pagamentoAtualizado, notificacao } = await prisma.$transaction(async (tx) => {
+      const pagamento = await tx.pagamento.findUnique({
+        where: { id: idPagamento }
+      })
 
-    if (!pagamento) {
-      throw new ErroAplicacao("Pagamento nao encontrado.", 404);
-    }
+      if (!pagamento) {
+        throw new ErroAplicacao("Pagamento nao encontrado.", 404)
+      }
 
-    if (pagamento.status !== "PENDENTE") {
-      throw new ErroAplicacao(
-        "Somente pagamentos pendentes podem ser rejeitados.",
-        409,
-      );
-    }
+      if (pagamento.status !== "PENDENTE") {
+        throw new ErroAplicacao(
+          "Somente pagamentos pendentes podem ser rejeitados.",
+          409
+        )
+      }
 
-    return prisma.pagamento.update({
-      where: { id: idPagamento },
-      data: {
-        status: "REJEITADO",
-        autorizadorId: usuarioLogado.id,
-        dataDecisao: new Date(),
-        motivoRejeicao: dados.motivoRejeicao,
-      },
-      include: includePagamento,
-    });
+      const pagamentoAtualizado = await tx.pagamento.update({
+        where: { id: idPagamento },
+        data: {
+          status: "REJEITADO",
+          autorizadorId: usuarioLogado.id,
+          dataDecisao: new Date(),
+          motivoRejeicao: dados.motivoRejeicao
+        },
+        include: includePagamento
+      })
+
+      const notificacao = await notificationService.criarRejeicaoPagamento(
+        tx,
+        pagamentoAtualizado,
+        usuarioLogado
+      )
+
+      return {
+        pagamentoAtualizado,
+        notificacao
+      }
+    })
+
+    notificationStreamService.enviarEvento(
+      pagamentoAtualizado.solicitanteId,
+      "notification",
+      notificacao
+    )
+
+    return pagamentoAtualizado
   }
 
   async historico(filtros, usuarioLogado) {
-    const where = {};
+    const where = {}
 
     if (filtros.status) {
-      where.status = filtros.status;
+      where.status = filtros.status
     }
 
     if (filtros.dataInicio || filtros.dataFim) {
-      where.dataRegistro = {};
+      where.dataRegistro = {}
     }
 
     if (filtros.dataInicio) {
-      where.dataRegistro.gte = ajustarInicioDoDia(filtros.dataInicio);
+      where.dataRegistro.gte = ajustarInicioDoDia(filtros.dataInicio)
     }
 
     if (filtros.dataFim) {
-      where.dataRegistro.lte = ajustarFimDoDia(filtros.dataFim);
+      where.dataRegistro.lte = ajustarFimDoDia(filtros.dataFim)
     }
 
     if (usuarioLogado.role === "REGISTRO") {
-      where.solicitanteId = usuarioLogado.id;
+      where.solicitanteId = usuarioLogado.id
     } else if (filtros.solicitanteId) {
-      const solicitanteIdNumero = Number(filtros.solicitanteId);
+      const solicitanteIdNumero = Number(filtros.solicitanteId)
 
       if (Number.isNaN(solicitanteIdNumero)) {
-        throw new Error("solicitanteId inválido.");
+        throw new Error("solicitanteId invalido.")
       }
 
-      where.solicitanteId = solicitanteIdNumero;
+      where.solicitanteId = solicitanteIdNumero
     }
 
     return prisma.pagamento.findMany({
       where,
       include: includePagamento,
       orderBy: {
-        dataRegistro: "desc",
-      },
-    });
+        dataRegistro: "desc"
+      }
+    })
   }
 }
 
 module.exports = {
-  paymentService: new PaymentService(),
-};
+  paymentService: new PaymentService()
+}

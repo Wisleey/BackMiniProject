@@ -1,0 +1,5 @@
+process.env.PORT = process.env.PORT || "3333"
+process.env.DATABASE_URL = process.env.DATABASE_URL || "mysql://test:test@localhost:3306/pagamentos_test"
+process.env.JWT_SECRET = process.env.JWT_SECRET || "jwt-secret-de-testes"
+process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h"
+process.env.BCRYPT_SALT_ROUNDS = process.env.BCRYPT_SALT_ROUNDS || "10"
